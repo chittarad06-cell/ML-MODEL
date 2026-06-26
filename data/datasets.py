@@ -9,6 +9,10 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from data.ingestion import load_raw_light_curves, load_raw_light_curves_from_path
+from data.preprocessing import ProcessedLightCurve, LightCurvePreprocessor
+from data.splitting import create_or_load_splits, ensure_labels, split_train_into_train_val
+
 
 @dataclass
 class DatasetSpec:
@@ -62,6 +66,12 @@ class LightCurveDataset(Dataset):
             x = x.transpose(0, 1)
         return x, self.y[idx], x.shape[-1]
 
+    @classmethod
+    def from_processed(cls, samples: list[ProcessedLightCurve]) -> "LightCurveDataset":
+        x = [sample.x for sample in samples]
+        y = [sample.y for sample in samples]
+        return cls(x, y)
+
 
 def collate_light_curves(batch: list[tuple[torch.Tensor, torch.Tensor, int]]) -> dict[str, torch.Tensor]:
     xs, ys, lengths = zip(*batch)
@@ -83,12 +93,65 @@ def collate_light_curves(batch: list[tuple[torch.Tensor, torch.Tensor, int]]) ->
 
 def create_dataloaders(config: dict[str, Any]) -> dict[str, DataLoader]:
     data_cfg = config["data"]
+    if data_cfg.get("raw_train_path") or data_cfg.get("raw_test_path"):
+        return _create_raw_split_dataloaders(config)
+    if data_cfg.get("dataset_path"):
+        return _create_raw_dataloaders(config)
+
     label_column = data_cfg.get("label_column", "label")
     loaders = {}
     for split in ("train", "val", "test"):
         if split not in data_cfg or data_cfg[split] is None:
             continue
         dataset = LightCurveDataset.from_config(data_cfg[split], label_column)
+        loaders[split] = DataLoader(
+            dataset,
+            batch_size=data_cfg.get("batch_size", 32),
+            shuffle=split == "train",
+            num_workers=data_cfg.get("num_workers", 0),
+            pin_memory=data_cfg.get("pin_memory", True),
+            collate_fn=collate_light_curves,
+        )
+    return loaders
+
+
+def _processed_from_path(config: dict[str, Any], path: str) -> list[ProcessedLightCurve]:
+    data_cfg = config["data"]
+    raw_records = load_raw_light_curves_from_path(config, path)
+    processed = LightCurvePreprocessor(config).transform_records(raw_records)
+    return ensure_labels(processed, data_cfg.get("labels_path"), data_cfg.get("label_column", "label"))
+
+
+def _create_raw_split_dataloaders(config: dict[str, Any]) -> dict[str, DataLoader]:
+    data_cfg = config["data"]
+    if not data_cfg.get("raw_train_path") or not data_cfg.get("raw_test_path"):
+        raise ValueError("Both data.raw_train_path and data.raw_test_path are required for raw split mode.")
+
+    train_samples = _processed_from_path(config, data_cfg["raw_train_path"])
+    test_samples = _processed_from_path(config, data_cfg["raw_test_path"])
+    if data_cfg.get("raw_val_path"):
+        val_samples = _processed_from_path(config, data_cfg["raw_val_path"])
+    else:
+        train_samples, val_samples = split_train_into_train_val(train_samples, config)
+
+    return _loaders_from_splits({"train": train_samples, "val": val_samples, "test": test_samples}, config)
+
+
+def _create_raw_dataloaders(config: dict[str, Any]) -> dict[str, DataLoader]:
+    data_cfg = config["data"]
+    raw_records = load_raw_light_curves(config)
+    processed = LightCurvePreprocessor(config).transform_records(raw_records)
+    processed = ensure_labels(processed, data_cfg.get("labels_path"), data_cfg.get("label_column", "label"))
+    splits = create_or_load_splits(processed, config)
+    return _loaders_from_splits(splits, config)
+
+
+def _loaders_from_splits(splits: dict[str, list[ProcessedLightCurve]], config: dict[str, Any]) -> dict[str, DataLoader]:
+    data_cfg = config["data"]
+
+    loaders = {}
+    for split, samples in splits.items():
+        dataset = LightCurveDataset.from_processed(samples)
         loaders[split] = DataLoader(
             dataset,
             batch_size=data_cfg.get("batch_size", 32),

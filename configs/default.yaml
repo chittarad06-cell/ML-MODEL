@@ -2,6 +2,43 @@ seed: 42
 device: auto
 
 data:
+  # New raw-dataset mode. Set dataset_path to one raw file or a directory of files.
+  # Supported: .parquet, .csv, .npz, .npy, .pt, .pth.
+  dataset_path: null
+  # Use these when raw data is already split into train/test folders or files.
+  raw_train_path: null
+  raw_val_path: null
+  raw_test_path: null
+  dataset_format: auto
+  directory_mode: auto
+  labels_path: null
+  sample_id_column: null
+  time_column: null
+  flux_column: null
+  quality_column: null
+  sequence_length: 2048
+  sequence_stride: 2048
+  preprocessing:
+    remove_bad_quality: true
+    good_quality_value: 0
+    min_points: 16
+    normalization: standard
+    outlier_clip:
+      enabled: true
+      sigma: 5.0
+    sequence_mode: pad_or_window
+    pad_short_sequences: true
+    padding_strategy: zero
+  splits:
+    ratios:
+      train: 0.7
+      val: 0.15
+      test: 0.15
+    val_from_train_ratio: 0.15
+    cache_path: outputs/splits/splits.json
+    reuse_cached: true
+
+  # Backward-compatible pre-split mode. Used when dataset_path is null.
   train:
     format: npz
     path: data/train.npz
@@ -59,4 +96,3 @@ inference:
     enabled: false
     noise_std: 0.005
     samples: 8
-

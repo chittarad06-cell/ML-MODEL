@@ -48,12 +48,17 @@ class ExoplanetPredictor:
         confidence = float(max(prob, 1 - prob) * (1 - min(uncertainty * 2, 1)))
         threshold = cfg.get("threshold", 0.5)
         explanation = gradient_saliency(self.model, x, mask, top_k=cfg.get("top_k_explanation_points", 50))
+        transit_region = _predicted_transit_region(explanation["top_indices"])
         return {
             "prediction": "Planet" if prob >= threshold else "No Planet",
             "probability": prob,
             "confidence": confidence,
             "reliability": _reliability(confidence, uncertainty),
             "uncertainty": uncertainty,
+            "model_used": self.config["model"]["name"],
+            "saliency_values": explanation["saliency"],
+            "most_important_time_indices": explanation["top_indices"],
+            "predicted_transit_region": transit_region,
             "explanation": explanation,
             "inference_time_ms": elapsed_ms,
         }
@@ -129,3 +134,17 @@ def _reliability(confidence: float, uncertainty: float) -> str:
     if confidence >= 0.65 and uncertainty <= 0.2:
         return "Medium"
     return "Low"
+
+
+def _predicted_transit_region(indices: list[int]) -> dict[str, int] | None:
+    if not indices:
+        return None
+    ordered = sorted(int(i) for i in indices)
+    clusters = [[ordered[0]]]
+    for idx in ordered[1:]:
+        if idx - clusters[-1][-1] <= 3:
+            clusters[-1].append(idx)
+        else:
+            clusters.append([idx])
+    best = max(clusters, key=len)
+    return {"start_index": best[0], "end_index": best[-1], "center_index": int(round(sum(best) / len(best)))}

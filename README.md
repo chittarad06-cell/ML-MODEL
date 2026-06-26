@@ -1,183 +1,371 @@
 # AI-Enabled Exoplanet Detection from Noisy Astronomical Light Curves
 
-Research-quality, dataset-agnostic PyTorch framework for binary exoplanet transit detection from preprocessed astronomical light curves such as Kepler or TESS.
+Dataset-agnostic PyTorch framework for the ISRO Bharatiya Antariksh Hackathon problem statement: detecting exoplanet transit signals from noisy astronomical light curves.
 
-This repository focuses only on the model pipeline. Preprocessing can be handled by another teammate and plugged in through CSV, NPY, NPZ, or Torch tensor files.
+The repository now supports the complete model-side pipeline:
 
-## What Is Built
+Raw TESS/Kepler-style files -> ingestion -> cleaning -> normalization -> sequence generation -> automatic train/validation/test split -> model training -> benchmark -> confidence estimation -> explainability -> dashboard-ready inference.
 
-- Modular data loader for preprocessed train/validation/test datasets
+## What This Project Provides
+
+- Raw dataset ingestion from one file or a directory of files
+- Supported formats: `.parquet`, `.csv`, `.npz`, `.npy`, `.pt`, `.pth`
+- Automatic file type detection from extension
+- Common astronomy column detection:
+  - `TIME`
+  - `PDCSAP_FLUX`
+  - `SAP_FLUX`
+  - `QUALITY`
+- YAML overrides for time, flux, quality, label, and sample ID columns
+- Internal preprocessing:
+  - NaN and infinity removal
+  - duplicate observation removal
+  - time sorting
+  - optional bad-quality filtering
+  - flux normalization
+  - outlier clipping
+  - fixed-length sequence generation
+  - padding and masking
+- Automatic 70/15/15 train/validation/test split by default
+- Reproducible split caching
+- Stratified split when labels are available
 - Three benchmark architectures:
-  - `cnn1d`: 1D CNN baseline
-  - `cnn_lstm`: CNN feature extractor plus LSTM
-  - `cnn_transformer`: CNN plus Transformer Encoder final model
-- Weighted BCE or Focal Loss for class imbalance
-- AdamW optimizer, LR scheduler, early stopping, checkpoints, reproducible seeds
-- Mixed precision training when CUDA is available
-- Monte Carlo Dropout confidence estimation
-- Time-series explainability through gradient saliency maps
-- Evaluation metrics, curves, confusion matrix, model size, inference timing
-- Standalone dashboard-friendly inference API
-- Optional ensemble inference, test-time augmentation, TensorBoard logging, ONNX export
+  - `cnn1d`
+  - `cnn_lstm`
+  - `cnn_transformer`
+- Focal Loss or weighted BCE for rare exoplanet class imbalance
+- AdamW, LR scheduling, early stopping, checkpoints
+- Mixed precision training on CUDA
+- TensorBoard logging
+- Monte Carlo Dropout uncertainty
+- Gradient saliency explainability
+- Standalone dashboard-compatible inference API
+- Benchmark leaderboard across all architectures
+- Optional ONNX export
 
 ## Project Structure
 
 ```text
-data/          Dataset adapters and batch collation
-models/        CNN, CNN+LSTM, CNN+Transformer, model factory
-training/      Losses, trainer, checkpointing
+configs/       YAML configuration
+data/          Ingestion, preprocessing, splitting, dataset wrappers
+models/        CNN, CNN+LSTM, CNN+Transformer
+training/      Losses, trainer, checkpoints
 evaluation/    Metrics, plots, model evaluation
-inference/     Single-sample and ensemble inference pipeline
-utils/         Config, seeds, logging, explainability, ONNX export
-configs/       YAML experiment configs
-notebooks/     Placeholder for experiments
-scripts/       CLI entry points
-outputs/       Generated checkpoints, metrics, plots
-experiments/   Hyperparameter tuning results and experiment notes
+inference/     Dashboard-ready prediction API
+utils/         Config, seeds, explainability, ONNX, model info
+scripts/       Train/evaluate/predict/benchmark commands
+experiments/   Hyperparameter search outputs
+notebooks/     Optional analysis notebooks
+outputs/       Generated splits, checkpoints, metrics, plots
 ```
 
-## Dataset Contract
-
-Your teammate should provide preprocessed light curves and labels in one of these forms:
-
-### Option 1: CSV
-
-Each row is one light curve. Feature columns contain flux/time-series values. The label column defaults to `label`.
-
-```csv
-flux_0,flux_1,flux_2,...,label
-0.01,0.03,-0.02,...,1
-0.00,-0.01,0.01,...,0
-```
-
-### Option 2: NPZ
-
-```python
-np.savez("train.npz", x=X_train, y=y_train)
-```
-
-`x` must be shaped `[samples, sequence_length]` or `[samples, channels, sequence_length]`. `y` must contain binary labels.
-
-### Option 3: NPY Pair
-
-```text
-train_x.npy
-train_y.npy
-```
-
-Use the config keys `x_path` and `y_path`.
-
-### Option 4: Torch
-
-A `.pt` or `.pth` file may contain either:
-
-```python
-{"x": tensor_or_array, "y": tensor_or_array}
-```
-
-or a tuple/list:
-
-```python
-(x, y)
-```
-
-Variable sequence lengths are supported through padding and masks for the Transformer model.
-
-## Quick Start
-
-Install dependencies:
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Edit [configs/default.yaml](configs/default.yaml) with your dataset paths, then train:
+For Parquet support, make sure your environment has either `pyarrow` or `fastparquet`. `pyarrow` is recommended:
 
 ```bash
-python scripts/train.py --config configs/default.yaml --model cnn_transformer
+pip install pyarrow
 ```
 
-Evaluate a checkpoint:
+## Dataset Modes
 
-```bash
-python scripts/evaluate.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt
-```
+### 1. Raw Dataset Mode: One File Or Directory
 
-Run single-light-curve inference:
+Use this when you have one raw file or a directory of many TESS/Kepler-like files.
 
-```bash
-python scripts/predict.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt --input path/to/light_curve.npy
-```
-
-Create a tiny synthetic dataset for a smoke test or meeting demo:
-
-```bash
-python scripts/make_synthetic_data.py
-python scripts/train.py --config configs/default.yaml --model cnn_transformer
-```
-
-Run practical hyperparameter tuning:
-
-```bash
-python scripts/tune.py --config configs/default.yaml --max-runs 6
-```
-
-Export ONNX:
-
-```bash
-python scripts/export_onnx.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt --output outputs/model.onnx
-```
-
-## Configuration
-
-Architecture is selected by YAML or CLI:
+In [configs/default.yaml](configs/default.yaml):
 
 ```yaml
-model:
-  name: cnn_transformer
+data:
+  dataset_path: data/raw
+  dataset_format: auto
+  directory_mode: auto
+  time_column: null
+  flux_column: null
+  quality_column: null
+  label_column: label
 ```
 
-CLI overrides YAML:
+The loader automatically finds every supported file under `data/raw`.
+
+### 2. Raw Train/Test Split Mode
+
+Use this when the dataset is already separated into train and test folders or files.
+
+```yaml
+data:
+  dataset_path: null
+  raw_train_path: data/train
+  raw_val_path: null
+  raw_test_path: data/test
+  label_column: label
+  time_column: TIME
+  flux_column: PDCSAP_FLUX
+  quality_column: QUALITY
+```
+
+If `raw_val_path` is `null`, the framework preserves the test set and automatically creates validation data from the training set using `data.splits.val_from_train_ratio`.
+
+### 3. Backward-Compatible Pre-Split Mode
+
+If you already have prepared train/validation/test files, leave `dataset_path: null` and configure:
+
+```yaml
+data:
+  dataset_path: null
+  train:
+    format: npz
+    path: data/train.npz
+  val:
+    format: npz
+    path: data/val.npz
+  test:
+    format: npz
+    path: data/test.npz
+```
+
+## Supported Formats
+
+### Parquet
+
+```yaml
+data:
+  dataset_path: data/tess_light_curves.parquet
+  flux_column: PDCSAP_FLUX
+  time_column: TIME
+  quality_column: QUALITY
+  label_column: label
+```
+
+The code uses `pandas.read_parquet()`.
+
+### CSV
+
+CSV files can contain one light curve or many light curves. If many samples are stored in one table, provide `sample_id_column`.
+
+```yaml
+data:
+  dataset_path: data/light_curves.csv
+  sample_id_column: object_id
+  time_column: TIME
+  flux_column: PDCSAP_FLUX
+  label_column: label
+```
+
+### NPZ
+
+```python
+np.savez("dataset.npz", x=X, y=y)
+```
+
+### NPY
+
+`.npy` may contain one light curve or a stack of light curves. If labels are not inside the file, provide `labels_path`.
+
+### Torch
+
+`.pt` or `.pth` may contain:
+
+```python
+{"x": x_tensor, "y": y_tensor}
+```
+
+or:
+
+```python
+(x_tensor, y_tensor)
+```
+
+## Label Handling
+
+Supervised training requires labels.
+
+Labels can come from:
+
+- a label column inside CSV/Parquet files
+- `y` inside NPZ/Torch files
+- a separate label file configured with `data.labels_path`
+
+Example external label CSV:
+
+```csv
+sample_id,label
+target_001,1
+target_002,0
+```
+
+If labels are missing, training stops with a clear error explaining where labels should be supplied.
+
+## Preprocessing Pipeline
+
+Configured in YAML:
+
+```yaml
+data:
+  sequence_length: 2048
+  sequence_stride: 2048
+  preprocessing:
+    remove_bad_quality: true
+    good_quality_value: 0
+    min_points: 16
+    normalization: standard
+    outlier_clip:
+      enabled: true
+      sigma: 5.0
+    sequence_mode: pad_or_window
+    pad_short_sequences: true
+    padding_strategy: zero
+```
+
+Available normalization modes:
+
+- `standard`
+- `robust`
+- `minmax`
+- `none`
+
+## Automatic Splitting
+
+Default split is 70/15/15:
+
+```yaml
+data:
+  splits:
+    ratios:
+      train: 0.7
+      val: 0.15
+      test: 0.15
+    val_from_train_ratio: 0.15
+    cache_path: outputs/splits/splits.json
+    reuse_cached: true
+```
+
+Splits are made at sample/sequence level, stratified when both classes are present, and cached for reproducibility.
+
+If your raw data already has train/test folders, the framework does not mix the test set into training. It only splits the training data into train/validation when no validation folder is supplied.
+
+## Training
+
+Train the preferred model:
+
+```bash
+python scripts/train.py --config configs/default.yaml --model cnn_transformer
+```
+
+Train another architecture:
 
 ```bash
 python scripts/train.py --config configs/default.yaml --model cnn_lstm
 ```
 
-## Inference Output
+## Benchmark All Models
 
-The dashboard-facing pipeline returns:
+Train and compare CNN, CNN+LSTM, and CNN+Transformer:
+
+```bash
+python scripts/benchmark.py --config configs/default.yaml
+```
+
+Output:
+
+```text
+outputs/benchmark/leaderboard.json
+```
+
+Leaderboard metrics:
+
+- Accuracy
+- Precision
+- Recall
+- F1
+- ROC-AUC
+- PR-AUC
+- Training time
+- Inference time
+- Model size
+
+The script automatically identifies the best model.
+
+## Evaluation
+
+```bash
+python scripts/evaluate.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt
+```
+
+Evaluation outputs:
+
+```text
+outputs/evaluation/metrics.json
+outputs/evaluation/roc_curve.png
+outputs/evaluation/precision_recall_curve.png
+```
+
+## Inference
+
+```bash
+python scripts/predict.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt --input path/to/light_curve.npy
+```
+
+Inference returns:
 
 ```json
 {
   "prediction": "Planet",
   "probability": 0.91,
   "confidence": 0.84,
-  "reliability": "High",
   "uncertainty": 0.07,
-  "explanation": {
-    "saliency": [0.01, 0.04, 0.90],
-    "top_indices": [241, 242, 243]
-  },
-  "inference_time_ms": 8.5
+  "reliability": "High",
+  "model_used": "cnn_transformer",
+  "inference_time_ms": 8.5,
+  "saliency_values": [0.01, 0.04, 0.90],
+  "most_important_time_indices": [241, 242, 243],
+  "predicted_transit_region": {
+    "start_index": 241,
+    "end_index": 243,
+    "center_index": 242
+  }
 }
 ```
 
-## Evaluation Outputs
+## Dashboard Integration
 
-The evaluator generates:
+The dashboard can call:
 
-- Accuracy
-- Precision
-- Recall
-- F1 score
-- ROC-AUC
-- Precision-Recall AUC
-- Confusion matrix
-- ROC curve
-- Precision-recall curve
-- Training and validation history
-- Inference time
-- Model size
+```python
+from inference import ExoplanetPredictor
 
+predictor = ExoplanetPredictor("configs/default.yaml", "outputs/checkpoints/best_model.pt")
+result = predictor.predict_array(preprocessed_or_raw_flux_array)
+```
 
+Use:
 
+- `prediction`
+- `probability`
+- `confidence`
+- `uncertainty`
+- `reliability`
+- `saliency_values`
+- `most_important_time_indices`
+- `predicted_transit_region`
+
+## Demo Without Real Data
+
+Create a tiny synthetic dataset for smoke testing:
+
+```bash
+python scripts/make_synthetic_data.py
+python scripts/train.py --config configs/default.yaml --model cnn_transformer
+```
+
+This is only for framework testing, not scientific validation.
+
+## ONNX Export
+
+```bash
+python scripts/export_onnx.py --config configs/default.yaml --checkpoint outputs/checkpoints/best_model.pt --output outputs/model.onnx
+```
