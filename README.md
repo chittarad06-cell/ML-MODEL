@@ -179,14 +179,5 @@ The evaluator generates:
 - Inference time
 - Model size
 
-## Meeting Summary
 
-You can explain it like this:
 
-> I built a modular PyTorch framework for exoplanet transit detection from preprocessed astronomical light curves. It is dataset-agnostic, so Kepler, TESS, or any compatible processed time-series dataset can be plugged in through config files. The framework benchmarks three models: a baseline 1D CNN, a CNN+LSTM, and a preferred CNN+Transformer model. The final model uses CNN layers for local transit-shape extraction and Transformer attention for long-range temporal context. It also includes class-imbalance handling, early stopping, mixed precision, checkpointing, explainable saliency outputs, MC-dropout confidence estimation, evaluation metrics and curves, and a standalone inference pipeline that can be directly connected to the dashboard.
-
-## Notes for Teammates
-
-- Preprocessing team: only needs to produce train/val/test arrays and labels following the dataset contract above.
-- Dashboard team: can call `ExoplanetPredictor.predict_array(...)` from [inference/predictor.py](inference/predictor.py).
-- Report team: can use generated metrics and plots from `outputs/evaluation/`.
