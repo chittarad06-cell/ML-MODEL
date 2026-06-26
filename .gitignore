@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+outputs/checkpoints/
+outputs/tensorboard/
+outputs/evaluation/
+*.onnx
+data/*.npz
+data/*.npy
+data/*.csv

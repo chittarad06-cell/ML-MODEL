@@ -1,0 +1,62 @@
+seed: 42
+device: auto
+
+data:
+  train:
+    format: npz
+    path: data/train.npz
+  val:
+    format: npz
+    path: data/val.npz
+  test:
+    format: npz
+    path: data/test.npz
+  label_column: label
+  batch_size: 32
+  num_workers: 0
+  pin_memory: true
+
+model:
+  name: cnn_transformer
+  input_channels: 1
+  num_classes: 1
+  cnn_channels: [32, 64, 128]
+  kernel_size: 7
+  dropout: 0.25
+  lstm_hidden: 128
+  lstm_layers: 1
+  transformer_dim: 128
+  transformer_heads: 4
+  transformer_layers: 3
+  transformer_ff_dim: 256
+
+training:
+  epochs: 50
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  optimizer: adamw
+  scheduler: cosine
+  early_stopping_patience: 8
+  grad_clip_norm: 1.0
+  mixed_precision: true
+  loss:
+    name: focal
+    alpha: 0.75
+    gamma: 2.0
+    pos_weight: null
+  checkpoint_dir: outputs/checkpoints
+  tensorboard_dir: outputs/tensorboard
+
+evaluation:
+  output_dir: outputs/evaluation
+  threshold: 0.5
+
+inference:
+  mc_dropout_samples: 30
+  threshold: 0.5
+  top_k_explanation_points: 50
+  tta:
+    enabled: false
+    noise_std: 0.005
+    samples: 8
+
