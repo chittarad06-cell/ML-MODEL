@@ -4,18 +4,19 @@ device: auto
 data:
   # New raw-dataset mode. Set dataset_path to one raw file or a directory of files.
   # Supported: .parquet, .csv, .npz, .npy, .pt, .pth.
-  dataset_path: null
+  dataset_path: C:\Users\HP\Documents\ISRO\datasets
   # Use these when raw data is already split into train/test folders or files.
-  raw_train_path: null
-  raw_val_path: null
-  raw_test_path: null
+  raw_train_path: datasets/train.parquet
+  raw_val_path: datasets/validation.parquet
+  raw_test_path: datasets/test.parquet
   dataset_format: auto
   directory_mode: auto
   labels_path: null
-  sample_id_column: null
-  time_column: null
-  flux_column: null
-  quality_column: null
+  sample_id_column: target_id
+  time_column: time
+  flux_column: detrended_flux
+  quality_column: quality
+  label_column: label_x
   sequence_length: 2048
   sequence_stride: 2048
   preprocessing:
@@ -48,7 +49,7 @@ data:
   test:
     format: npz
     path: data/test.npz
-  label_column: label
+  label_column: label_x
   batch_size: 32
   num_workers: 0
   pin_memory: true

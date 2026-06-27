@@ -84,7 +84,19 @@ def dataframe_to_light_curves(df: pd.DataFrame, config: dict[str, Any], source_i
         if label_col:
             labels = group[label_col].dropna().unique()
             if len(labels) > 0:
-                label = int(labels[0])
+                value = labels[0]
+
+                if isinstance(value, str):
+                    value = value.strip().lower()
+
+                    if value == "transit":
+                        label = 1
+                    elif value == "false_positive":
+                        label = 0
+                    else:
+                        raise ValueError(f"Unknown label: {value}")
+                else:
+                    label = int(value)          
         records.append(
             {
                 "sample_id": str(group_id),
