@@ -70,7 +70,8 @@ def dataframe_to_light_curves(df: pd.DataFrame, config: dict[str, Any], source_i
     quality_col = detect_column(df.columns, data_cfg.get("quality_column"), COMMON_QUALITY_COLUMNS, "quality")
     label_col = data_cfg.get("label_column", "label") if data_cfg.get("label_column", "label") in df.columns else None
     sample_id_col = data_cfg.get("sample_id_column") if data_cfg.get("sample_id_column") in df.columns else None
-
+    if label_col:
+        df = df[df[label_col].notna()].copy()
     if flux_col is None:
         numeric = [c for c in df.select_dtypes(include=[np.number]).columns if c not in {label_col, quality_col}]
         if not numeric:
